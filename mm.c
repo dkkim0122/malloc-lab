@@ -90,6 +90,9 @@ team_t team = {
 #define NEXT_BLKP(bp)   ((char*)(bp) + GET_SIZE(((char*)(bp) - WSIZE))) // (char*)(bp) + GET_SIZE(지금 블록의 헤더값)
 #define PREV_BLKP(bp)   ((char*)(bp) - GET_SIZE(((char*)(bp) - DSIZE))) // (char*)(bp) - GET_SIZE(이전 블록의 풋터값)
 
+/* 항상 prologue block을 가리키는 정적 전역 변수 설정 */
+static char* heap_listp;
+
 /*===================================================================*/
 
 /* 
@@ -98,8 +101,6 @@ team_t team = {
 int mm_init(void)
 {
     /* 메모리에서 4word 가져오고 이걸로 빈 가용 리스트 초기화 */
-    static char* heap_listp; // 항상 prologue block을 가리키는 정적 전역 변수 설정
-
     // 먼저 4word 크기의 메모리를 불러온다. heap_listp가 그 첫 주소를 가리킨다.
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void*)-1)
         return -1;
@@ -174,7 +175,7 @@ static void* extend_heap(size_t words){ // 워드 단위로 받는다.
     
     /* 더블 워드 정렬에 따라 메모리를 mem_sbrk 함수를 이용해 할당받는다. */
     // Double Word Alignment : 늘 짝수 개수의 워드를 할당해주어야 한다.
-    size = (words % 2) ? (words + 1)*WSIZE : (words)*WSIZE; 
+    size = (words % 2) ? (words + 1) * WSIZE : (words) * WSIZE; // size를 짝수 word && byte 형태로 만든다.
     if ((long)(bp = mem_sbrk(size)) == -1) // 새 메모리의 첫 부분을 bp로 둔다. 주소값은 int로는 못 받아서 long으로 casting한 듯.
         return NULL;
     
@@ -194,16 +195,79 @@ static void* extend_heap(size_t words){ // 워드 단위로 받는다.
  */
 void *mm_malloc(size_t size)
 {
-    // 요청 사이즈에 header와 footer를 위한 dword 공간을 추가한 후 align해준다.
-    int newsize = ALIGN(size + SIZE_T_SIZE);  
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
-	    return NULL;
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+    size_t newsize;
+    size_t extendsize;
+    char* bp;
+
+    // 가짜 요청 spurious request 무시
+    if (size == 0)
+        return NULL;
+
+    // 요청 사이즈에 header와 footer를 위한 dword 공간(SIZE_T_SIZE)을 추가한 후 align해준다.
+    newsize = ALIGN(size + SIZE_T_SIZE);  
+
+    // 할당할 가용 리스트를 찾아 필요하다면 분할해서 할당한다!
+    if ((bp = first_fit(newsize)) != NULL){  // first fit으로 추적한다.
+        place(bp, newsize);  // 필요하다면 분할하여 할당한다.
+        return bp;
+    }
+
+    // 만약 맞는 크기의 가용 블록이 없다면 새로 힙을 늘려서 
+    extendsize = MAX(newsize, CHUNKSIZE);  // 둘 중 더 큰 값으로 사이즈를 정한다.
+    // extend_heap()은 word 단위로 인자를 받으므로 WSIZE로 나눠준다.
+    if ((bp = extend_heap(extendsize/WSIZE)) == NULL) 
+        return NULL;
+    // 새 힙에 메모리를 할당한다.
+    place(bp, newsize);
+    return bp;
+}
+
+/*
+    first_fit : 힙의 맨 처음부터 탐색하여 요구하는 메모리 공간보다 큰 가용 블록의 주소를 반환한다.
+*/
+static void* first_fit(size_t newsize){
+
+    void* bp;
+
+    // 프롤로그 블록에서 에필로그 블록 전까지 블록 포인터 bp를 탐색한다.
+    // 블록이 가용 상태이고 사이즈가 요구 사이즈보다 크다면 해당 블록 포인터를 리턴
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
+        if(!GET_ALLOC(HDRP(bp)) && (newsize <= GET_SIZE(HDRP(bp)))){
+            return bp;
+        }
+    }
+
+    // 못 찾으면 NULL을 리턴한다.
+    return NULL;
+}
+
+/*
+    place(bp, size)
+    : 요구 메모리를 할당할 수 있는 가용 블록을 할당한다. 이 때 분할이 가능하면 분할한다.
+*/
+static void place(void* bp, size_t newsize){
+    // 현재 할당할 수 있는 후보 가용 블록의 주소
+    size_t csize = GET_SIZE(HDRP(bp));
+
+    // 분할이 가능한 경우
+    // -> 남은 메모리가 최소한의 가용 블록을 만들 수 있는 4word(16byte)가 되느냐.
+    // header & footer : 1word씩, payload : 1word, 정렬 위한 padding : 1word = 4words
+    if ((csize - newsize) >= (2*DSIZE)){
+        // 앞의 블록은 할당 블록으로
+        PUT(HDRP(bp), PACK(newsize, 1));
+        PUT(FTRP(bp), PACK(newsize, 1));
+        // 뒤의 블록은 가용 블록으로 분할한다.
+        bp = NEXT_BLKP(bp);
+        PUT(HDRP(bp), PACK(csize-newsize, 0));
+        PUT(FTRP(bp), PACK(csize-newsize, 0));
+    }
+    // 분할할 수 없다면 남은 부분은 padding한다.
+    else{
+        PUT(HDRP(bp), PACK(csize, 1));
+        PUT(FTRP(bp), PACK(csize, 1));
     }
 }
+
 
 /*
  * mm_free - Freeing a block does nothing.

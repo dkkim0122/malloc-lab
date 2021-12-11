@@ -57,7 +57,7 @@ void mem_reset_brk()
  *    by incr bytes and returns the start address of the new area. In
  *    this model, the heap cannot be shrunk.
  */
-void *mem_sbrk(int incr) 
+void *mem_sbrk(int incr)  // 바이트 형태로 받는다.
 {
     char *old_brk = mem_brk;  // 힙 늘이기 전의 끝 포인터를 저장한다.
 
