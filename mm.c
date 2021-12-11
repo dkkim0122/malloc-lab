@@ -42,6 +42,9 @@ team_t team = {
 // size보다 큰 가장 가까운 ALIGNMENT의 배수로 만들어준다 -> 정렬!
 // size = 7 : (00000111 + 00000111) & 11111000 = 00001110 & 11111000 = 00001000 = 8
 // size = 13 : (00001101 + 00000111) & 11111000 = 00010000 = 16
+// 1 ~ 7 bytes : 8 bytes
+// 8 ~ 16 bytes : 16 bytes
+// 17 ~ 24 bytes : 24 bytes
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 
 /* 메모리 할당 시 기본적으로 header와 footer를 위해 필요한 더블워드만큼의 메모리 크기 */
@@ -65,7 +68,7 @@ team_t team = {
 #define PACK(size, alloc)   ((size) | (alloc))   
 
 /* 주소 p에서의 word를 읽어오거나 쓰는 함수 */
-// 포인터 p가 가리키는 주소의 값을 리턴하거나 val로 변경
+// 포인터 p가 가리키는 곳의 값을 리턴하거나 val을 저장
 #define GET(p)          (*(unsigned int*)(p))
 #define PUT(p, val)     (*(unsigned int*)(p) = (val))
 
@@ -82,8 +85,8 @@ team_t team = {
 #define FTRP(bp)    ((char*)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /* 블록 포인터 bp를 인자로 받아 이후, 이전 블록의 주소를 리턴한다 */
-// 지금 블록의 bp에 블록의 크기(char*이므로 word단위)만큼을 더한다.
-// 지금 블록의 bp에 이전 블록의 footer에서 참조한 이전 블록의 크기를 뺀다.
+// NEXT : 지금 블록의 bp에 블록의 크기(char*이므로 word단위)만큼을 더한다.
+// PREV : 지금 블록의 bp에 이전 블록의 footer에서 참조한 이전 블록의 크기를 뺀다.
 #define NEXT_BLKP(bp)   ((char*)(bp) + GET_SIZE(((char*)(bp) - WSIZE))) // (char*)(bp) + GET_SIZE(지금 블록의 헤더값)
 #define PREV_BLKP(bp)   ((char*)(bp) - GET_SIZE(((char*)(bp) - DSIZE))) // (char*)(bp) - GET_SIZE(이전 블록의 풋터값)
 
@@ -112,11 +115,78 @@ int mm_init(void)
 
     /* 그 후 CHUNKSIZE만큼 힙을 확장해 초기 가용 블록을 생성한다. */
     // 새 힙을 CHUNKSIZE 바이트만큼의 WORD 개수만큼 늘려준다.
-    if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL) //실패하면 -1 리턴
         return -1;
 
     return 0;
 }
+
+/*
+    coalesce(bp) : 해당 가용 블록을 앞뒤 가용 블록과 연결하고 
+    연결된 가용 블록의 주소를 리턴한다.
+*/
+static void* coalesce(void* bp){
+    // 직전 블록의 footer, 직후 블록의 header를 보고 가용 여부를 확인.
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));  // 직전 블록 가용 여부
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));  // 직후 블록 가용 여부
+    size_t size = GET_SIZE(HDRP(bp));
+
+    // case 1 : 직전, 직후 블록이 모두 할당
+    // 해당 블록만.
+    if (prev_alloc && next_alloc)
+        return bp;
+
+    // case 2 : 직전 블록 할당, 직후 블록 가용
+    else if(prev_alloc && !next_alloc){
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0)); // 이미 여기서 footer가 직후 블록의 footer로 변경된다.
+        PUT(FTRP(bp), PACK(size, 0)); // 직후 블록 footer 변경 
+        // 블록 포인터는 변경할 필요 없다.
+    }
+
+    // case 3 : 직전 블록 가용, 직후 블록 할당
+    else if(!prev_alloc && next_alloc){
+        size += GET_SIZE(FTRP(PREV_BLKP(bp)));  // HDRP로 해도 된다.
+        PUT(FTRP(bp), PACK(size, 0));  // 해당 블록 footer
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 직후 블록 header
+        bp = PREV_BLKP(bp); // 블록 포인터를 직전 블록으로 옮긴다.
+    }
+
+    // case 4 : 직전, 직후 블록 모두 가용
+    else{
+        size += GET_SIZE(FTRP(PREV_BLKP(bp)))
+                + GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));  // 직전 블록 header
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));  // 직후 블록 footer
+        bp = PREV_BLKP(bp);  // 블록 포인터를 직전 블록으로 옮긴다.
+    }
+
+    // 최종 가용 블록의 주소를 리턴한다.
+    return bp;
+}
+
+/*
+    extend_heap : 워드 단위 메모리를 인자로 받아 힙을 늘려준다.
+*/
+static void* extend_heap(size_t words){ // 워드 단위로 받는다.
+    char* bp;
+    size_t size;
+    
+    /* 더블 워드 정렬에 따라 메모리를 mem_sbrk 함수를 이용해 할당받는다. */
+    // Double Word Alignment : 늘 짝수 개수의 워드를 할당해주어야 한다.
+    size = (words % 2) ? (words + 1)*WSIZE : (words)*WSIZE; 
+    if ((long)(bp = mem_sbrk(size)) == -1) // 새 메모리의 첫 부분을 bp로 둔다. 주소값은 int로는 못 받아서 long으로 casting한 듯.
+        return NULL;
+    
+    /* 새 가용 블록의 header와 footer를 정해주고 epilogue block을 가용 블록 맨 끝으로 옮긴다. */
+    PUT(HDRP(bp), PACK(size, 0));  // 헤더. 할당 안 해줬으므로 0으로.
+    PUT(FTRP(bp), PACK(size, 0));  // 풋터.
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0,1));  // 새 에필로그 헤더
+
+    /* 만약 이전 블록이 가용 블록이라면 연결시킨다. */
+    return coalesce(bp);
+}
+
 
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
@@ -124,10 +194,11 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
+    // 요청 사이즈에 header와 footer를 위한 dword 공간을 추가한 후 align해준다.
+    int newsize = ALIGN(size + SIZE_T_SIZE);  
     void *p = mem_sbrk(newsize);
     if (p == (void *)-1)
-	return NULL;
+	    return NULL;
     else {
         *(size_t *)p = size;
         return (void *)((char *)p + SIZE_T_SIZE);
@@ -139,7 +210,17 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+    // 해당 블록의 size를 알아내 header와 footer의 정보를 수정한다.
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    // header와 footer를 설정
+    PUT(HDRP(ptr), PACK(size, 0));
+    PUT(FTRP(ptr), PACK(size, 0));
+
+    // 만약 앞뒤의 블록이 가용 상태라면 연결한다.
+    coalesce(ptr);
 }
+
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
