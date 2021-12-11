@@ -62,12 +62,12 @@ team_t team = {
 /* header 및 footer 값(size + allocated) 리턴 */
 // 더블워드 정렬로 인해 size의 오른쪽 3~4자리는 비어 있다. 
 //이 곳에 0(freed), 1(allocated) flag를 삽입한다.
-#define PACK(size, alloc)   ((size | (alloc))   
+#define PACK(size, alloc)   ((size) | (alloc))   
 
 /* 주소 p에서의 word를 읽어오거나 쓰는 함수 */
 // 포인터 p가 가리키는 주소의 값을 리턴하거나 val로 변경
 #define GET(p)          (*(unsigned int*)(p))
-#define PUT(p, val)     (*(unsinged int*)(p) = val)
+#define PUT(p, val)     (*(unsigned int*)(p) = (val))
 
 /* header or footer에서 블록의 size, allocated field를 읽어온다 */
 // & ~0x7 => 0x7:0000 0111 ~0x7:1111 1000이므로 ex. 1011 0111 & 1111 1000 = 1011 0000 : size 176bytes
@@ -79,13 +79,13 @@ team_t team = {
 // 포인터가 char* 형이므로, 숫자를 더하거나 빼면 그 만큼의 바이트를 뺀 것과 같다.
 // WSIZE 4를 뺀다는 것은 주소가 4byte(1 word) 뒤로 간다는 뜻. bp의 1word 뒤는 헤더.
 #define HDRP(bp)    ((char*)(bp) - WSIZE) 
-#define FTRP(bp)    ((char*)(bp) + GET_SIZE(bp) - DSIZE)
+#define FTRP(bp)    ((char*)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /* 블록 포인터 bp를 인자로 받아 이후, 이전 블록의 주소를 리턴한다 */
 // 지금 블록의 bp에 블록의 크기(char*이므로 word단위)만큼을 더한다.
 // 지금 블록의 bp에 이전 블록의 footer에서 참조한 이전 블록의 크기를 뺀다.
-#define NEXT_BLKP(bp)   ((char*)(bp) + GET_SIZE((char*)bp - WSIZE)) // (char*)(bp) + GET_SIZE(지금 블록의 헤더값)
-#define PREV_BLKP(bp)   ((char*)(bp) - GET_SIZE((char*)bp - DSIZE)) // (char*)(bp) - GET_SIZE(이전 블록의 풋터값)
+#define NEXT_BLKP(bp)   ((char*)(bp) + GET_SIZE(((char*)(bp) - WSIZE))) // (char*)(bp) + GET_SIZE(지금 블록의 헤더값)
+#define PREV_BLKP(bp)   ((char*)(bp) - GET_SIZE(((char*)(bp) - DSIZE))) // (char*)(bp) - GET_SIZE(이전 블록의 풋터값)
 
 /*===================================================================*/
 
@@ -94,6 +94,27 @@ team_t team = {
  */
 int mm_init(void)
 {
+    /* 메모리에서 4word 가져오고 이걸로 빈 가용 리스트 초기화 */
+    static char* heap_listp; // 항상 prologue block을 가리키는 정적 전역 변수 설정
+
+    // 먼저 4word 크기의 메모리를 불러온다. heap_listp가 그 첫 주소를 가리킨다.
+    if ((heap_listp = mem_sbrk(4*WSIZE)) == (void*)-1)
+        return -1;
+
+    // 맨 앞의 1워드는 정보 0인 미사용 패딩.
+    // 그 다음의 prologue block은 header와 footer로만 이루어진 2word짜리 블록
+    // 맨 뒤는 헤더만으로 구성된 크기 0의 epilogue block
+    PUT(heap_listp, 0);  // Alignment padding. 더블 워드 경계로 정렬된 미사용 패딩.
+    PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1));  // prologue header
+    PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));  // prologue footer
+    PUT(heap_listp + (3*WSIZE), PACK(0, 1));      // epliogue header
+    heap_listp += (2*WSIZE);  //정적 전역 변수는 늘 prologue block을 가리킨다.
+
+    /* 그 후 CHUNKSIZE만큼 힙을 확장해 초기 가용 블록을 생성한다. */
+    // 새 힙을 CHUNKSIZE 바이트만큼의 WORD 개수만큼 늘려준다.
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+        return -1;
+
     return 0;
 }
 
