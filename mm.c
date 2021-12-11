@@ -93,6 +93,15 @@ team_t team = {
 /* 항상 prologue block을 가리키는 정적 전역 변수 설정 */
 static char* heap_listp;
 
+int mm_init(void);
+static void* coalesce(void* bp);
+static void* extend_heap(size_t words);
+void *mm_malloc(size_t size);
+static void* first_fit(size_t newsize);
+static void place(void* bp, size_t newsize);
+void mm_free(void *bp);
+void *mm_realloc(void *ptr, size_t size);
+
 /*===================================================================*/
 
 /* 
@@ -147,7 +156,7 @@ static void* coalesce(void* bp){
 
     // case 3 : 직전 블록 가용, 직후 블록 할당
     else if(!prev_alloc && next_alloc){
-        size += GET_SIZE(FTRP(PREV_BLKP(bp)));  // HDRP로 해도 된다.
+        size += GET_SIZE(FTRP(PREV_BLKP(bp)));  // HDRP로 해도 된다.////////////////
         PUT(FTRP(bp), PACK(size, 0));  // 해당 블록 footer
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 직후 블록 header
         bp = PREV_BLKP(bp); // 블록 포인터를 직전 블록으로 옮긴다.
@@ -215,7 +224,7 @@ void *mm_malloc(size_t size)
     // 만약 맞는 크기의 가용 블록이 없다면 새로 힙을 늘려서 
     extendsize = MAX(newsize, CHUNKSIZE);  // 둘 중 더 큰 값으로 사이즈를 정한다.
     // extend_heap()은 word 단위로 인자를 받으므로 WSIZE로 나눠준다.
-    if ((bp = extend_heap(extendsize/WSIZE)) == NULL) 
+    if ((bp = extend_heap(extendsize / WSIZE)) == NULL) 
         return NULL;
     // 새 힙에 메모리를 할당한다.
     place(bp, newsize);
@@ -272,17 +281,17 @@ static void place(void* bp, size_t newsize){
 /*
  * mm_free - Freeing a block does nothing.
  */
-void mm_free(void *ptr)
+void mm_free(void *bp)
 {
     // 해당 블록의 size를 알아내 header와 footer의 정보를 수정한다.
-    size_t size = GET_SIZE(HDRP(ptr));
+    size_t size = GET_SIZE(HDRP(bp));
 
     // header와 footer를 설정
-    PUT(HDRP(ptr), PACK(size, 0));
-    PUT(FTRP(ptr), PACK(size, 0));
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
 
     // 만약 앞뒤의 블록이 가용 상태라면 연결한다.
-    coalesce(ptr);
+    coalesce(bp);
 }
 
 
@@ -298,7 +307,8 @@ void *mm_realloc(void *ptr, size_t size)
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    copySize = GET_SIZE(HDRP(oldptr));
     if (size < copySize)
       copySize = size;
     memcpy(newptr, oldptr, copySize);
