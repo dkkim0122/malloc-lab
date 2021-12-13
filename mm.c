@@ -90,15 +90,15 @@ team_t team = {
 #define NEXT_BLKP(bp)   ((char*)(bp) + GET_SIZE(((char*)(bp) - WSIZE))) // (char*)(bp) + GET_SIZE(지금 블록의 헤더값)
 #define PREV_BLKP(bp)   ((char*)(bp) - GET_SIZE(((char*)(bp) - DSIZE))) // (char*)(bp) - GET_SIZE(이전 블록의 풋터값)
 
-/* 항상 prologue block을 가리키는 정적 전역 변수 설정 */
-static char* heap_listp;
-
-int mm_init(void);
-static void* coalesce(void* bp);
+/* global variable & functions */
+static char* heap_listp; // 항상 prologue block을 가리키는 정적 전역 변수 설정
 static void* extend_heap(size_t words);
-void *mm_malloc(size_t size);
+static void* coalesce(void* bp);
 static void* first_fit(size_t newsize);
 static void place(void* bp, size_t newsize);
+
+int mm_init(void);
+void *mm_malloc(size_t size);
 void mm_free(void *bp);
 void *mm_realloc(void *ptr, size_t size);
 
@@ -125,7 +125,7 @@ int mm_init(void)
 
     /* 그 후 CHUNKSIZE만큼 힙을 확장해 초기 가용 블록을 생성한다. */
     // 새 힙을 CHUNKSIZE 바이트만큼의 WORD 개수만큼 늘려준다.
-    if (extend_heap(CHUNKSIZE/WSIZE) == NULL) //실패하면 -1 리턴
+    if (extend_heap(CHUNKSIZE / WSIZE) == NULL) //실패하면 -1 리턴
         return -1;
 
     return 0;
@@ -156,7 +156,7 @@ static void* coalesce(void* bp){
 
     // case 3 : 직전 블록 가용, 직후 블록 할당
     else if(!prev_alloc && next_alloc){
-        size += GET_SIZE(FTRP(PREV_BLKP(bp)));  // HDRP로 해도 된다.////////////////
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));  // 해당 블록 footer
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 직후 블록 header
         bp = PREV_BLKP(bp); // 블록 포인터를 직전 블록으로 옮긴다.
@@ -164,8 +164,8 @@ static void* coalesce(void* bp){
 
     // case 4 : 직전, 직후 블록 모두 가용
     else{
-        size += GET_SIZE(FTRP(PREV_BLKP(bp)))
-                + GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)))
+                + GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));  // 직전 블록 header
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));  // 직후 블록 footer
         bp = PREV_BLKP(bp);  // 블록 포인터를 직전 블록으로 옮긴다.
@@ -191,7 +191,7 @@ static void* extend_heap(size_t words){ // 워드 단위로 받는다.
     /* 새 가용 블록의 header와 footer를 정해주고 epilogue block을 가용 블록 맨 끝으로 옮긴다. */
     PUT(HDRP(bp), PACK(size, 0));  // 헤더. 할당 안 해줬으므로 0으로.
     PUT(FTRP(bp), PACK(size, 0));  // 풋터.
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0,1));  // 새 에필로그 헤더
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));  // 새 에필로그 헤더
 
     /* 만약 이전 블록이 가용 블록이라면 연결시킨다. */
     return coalesce(bp);
@@ -204,8 +204,8 @@ static void* extend_heap(size_t words){ // 워드 단위로 받는다.
  */
 void *mm_malloc(size_t size)
 {
-    size_t newsize;
-    size_t extendsize;
+    size_t asize;       // Adjusted block size
+    size_t extendsize;  // Amount for extend heap if there is no fit
     char* bp;
 
     // 가짜 요청 spurious request 무시
@@ -213,62 +213,67 @@ void *mm_malloc(size_t size)
         return NULL;
 
     // 요청 사이즈에 header와 footer를 위한 dword 공간(SIZE_T_SIZE)을 추가한 후 align해준다.
-    newsize = ALIGN(size + SIZE_T_SIZE);  
+    // newsize = ALIGN(size + SIZE_T_SIZE);  
+    if (size <= DSIZE)
+        asize = 2 * DSIZE;
+    else
+        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
 
     // 할당할 가용 리스트를 찾아 필요하다면 분할해서 할당한다!
-    if ((bp = first_fit(newsize)) != NULL){  // first fit으로 추적한다.
-        place(bp, newsize);  // 필요하다면 분할하여 할당한다.
+    if ((bp = first_fit(asize)) != NULL){  // first fit으로 추적한다.
+        place(bp, asize);  // 필요하다면 분할하여 할당한다.
         return bp;
     }
 
     // 만약 맞는 크기의 가용 블록이 없다면 새로 힙을 늘려서 
-    extendsize = MAX(newsize, CHUNKSIZE);  // 둘 중 더 큰 값으로 사이즈를 정한다.
+    extendsize = MAX(asize, CHUNKSIZE);  // 둘 중 더 큰 값으로 사이즈를 정한다.
     // extend_heap()은 word 단위로 인자를 받으므로 WSIZE로 나눠준다.
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL) 
         return NULL;
     // 새 힙에 메모리를 할당한다.
-    place(bp, newsize);
+    place(bp, asize);
     return bp;
 }
 
 /*
     first_fit : 힙의 맨 처음부터 탐색하여 요구하는 메모리 공간보다 큰 가용 블록의 주소를 반환한다.
 */
-static void* first_fit(size_t newsize){
+static void* first_fit(size_t asize){
 
     void* bp;
 
     // 프롤로그 블록에서 에필로그 블록 전까지 블록 포인터 bp를 탐색한다.
     // 블록이 가용 상태이고 사이즈가 요구 사이즈보다 크다면 해당 블록 포인터를 리턴
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
-        if(!GET_ALLOC(HDRP(bp)) && (newsize <= GET_SIZE(HDRP(bp)))){
+        if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){
             return bp;
         }
     }
 
     // 못 찾으면 NULL을 리턴한다.
     return NULL;
+
 }
 
 /*
     place(bp, size)
     : 요구 메모리를 할당할 수 있는 가용 블록을 할당한다. 이 때 분할이 가능하면 분할한다.
 */
-static void place(void* bp, size_t newsize){
+static void place(void* bp, size_t asize){
     // 현재 할당할 수 있는 후보 가용 블록의 주소
     size_t csize = GET_SIZE(HDRP(bp));
 
     // 분할이 가능한 경우
     // -> 남은 메모리가 최소한의 가용 블록을 만들 수 있는 4word(16byte)가 되느냐.
     // header & footer : 1word씩, payload : 1word, 정렬 위한 padding : 1word = 4words
-    if ((csize - newsize) >= (2*DSIZE)){
+    if ((csize - asize) >= (2*DSIZE)){
         // 앞의 블록은 할당 블록으로
-        PUT(HDRP(bp), PACK(newsize, 1));
-        PUT(FTRP(bp), PACK(newsize, 1));
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(FTRP(bp), PACK(asize, 1));
         // 뒤의 블록은 가용 블록으로 분할한다.
         bp = NEXT_BLKP(bp);
-        PUT(HDRP(bp), PACK(csize-newsize, 0));
-        PUT(FTRP(bp), PACK(csize-newsize, 0));
+        PUT(HDRP(bp), PACK(csize-asize, 0));
+        PUT(FTRP(bp), PACK(csize-asize, 0));
     }
     // 분할할 수 없다면 남은 부분은 padding한다.
     else{
