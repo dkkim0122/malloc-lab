@@ -35,6 +35,8 @@ team_t team = {
     ""
 };
 
+
+
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
 
@@ -90,11 +92,19 @@ team_t team = {
 #define NEXT_BLKP(bp)   ((char*)(bp) + GET_SIZE(((char*)(bp) - WSIZE))) // (char*)(bp) + GET_SIZE(지금 블록의 헤더값)
 #define PREV_BLKP(bp)   ((char*)(bp) - GET_SIZE(((char*)(bp) - DSIZE))) // (char*)(bp) - GET_SIZE(이전 블록의 풋터값)
 
+/* define searching method for find suitable free blocks to allocate*/
+#define NEXT_FIT  // define하면 next_fit, 안 하면 first_fit으로 탐색
+
 /* global variable & functions */
 static char* heap_listp; // 항상 prologue block을 가리키는 정적 전역 변수 설정
+
+#ifdef NEXT_FIT
+    static void* last_freep;  // next_fit 사용 시 마지막으로 탐색한 가용 블록
+#endif
+
 static void* extend_heap(size_t words);
 static void* coalesce(void* bp);
-static void* first_fit(size_t newsize);
+static void* find_fit(size_t asize);
 static void place(void* bp, size_t newsize);
 
 int mm_init(void);
@@ -122,6 +132,10 @@ int mm_init(void)
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));  // prologue footer
     PUT(heap_listp + (3*WSIZE), PACK(0, 1));      // epliogue header
     heap_listp += (2*WSIZE);  //정적 전역 변수는 늘 prologue block을 가리킨다.
+
+    #ifdef NEXT_FIT
+        last_freep = heap_listp;
+    #endif
 
     /* 그 후 CHUNKSIZE만큼 힙을 확장해 초기 가용 블록을 생성한다. */
     // 새 힙을 CHUNKSIZE 바이트만큼의 WORD 개수만큼 늘려준다.
@@ -171,6 +185,11 @@ static void* coalesce(void* bp){
         bp = PREV_BLKP(bp);  // 블록 포인터를 직전 블록으로 옮긴다.
     }
 
+    // next-fit 사용 시, 추적 포인터를 연결이 끝난 블록의 블록 포인터로 변경한다.
+    #ifdef NEXT_FIT
+        last_freep = bp;
+    #endif
+
     // 최종 가용 블록의 주소를 리턴한다.
     return bp;
 }
@@ -213,14 +232,10 @@ void *mm_malloc(size_t size)
         return NULL;
 
     // 요청 사이즈에 header와 footer를 위한 dword 공간(SIZE_T_SIZE)을 추가한 후 align해준다.
-    // newsize = ALIGN(size + SIZE_T_SIZE);  
-    if (size <= DSIZE)
-        asize = 2 * DSIZE;
-    else
-        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
+    asize = ALIGN(size + SIZE_T_SIZE);  
 
     // 할당할 가용 리스트를 찾아 필요하다면 분할해서 할당한다!
-    if ((bp = first_fit(asize)) != NULL){  // first fit으로 추적한다.
+    if ((bp = find_fit(asize)) != NULL){  // first fit으로 추적한다.
         place(bp, asize);  // 필요하다면 분할하여 할당한다.
         return bp;
     }
@@ -236,24 +251,53 @@ void *mm_malloc(size_t size)
 }
 
 /*
+    next_fit : 이전 검색이 종료된 지점부터 검색을 다시 시작한다.
     first_fit : 힙의 맨 처음부터 탐색하여 요구하는 메모리 공간보다 큰 가용 블록의 주소를 반환한다.
 */
-static void* first_fit(size_t asize){
+static void* find_fit(size_t asize){
+    /* Next-fit */
+    #ifdef NEXT_FIT
+        void* bp;
+        void* old_last_freep = last_freep;
 
-    void* bp;
-
-    // 프롤로그 블록에서 에필로그 블록 전까지 블록 포인터 bp를 탐색한다.
-    // 블록이 가용 상태이고 사이즈가 요구 사이즈보다 크다면 해당 블록 포인터를 리턴
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
-        if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){
-            return bp;
+        // 이전 탐색이 종료된 시점에서부터 다시 시작한다.
+        for (bp = last_freep; GET_SIZE(HDRP(bp)); bp = NEXT_BLKP(bp)){
+            if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+                return bp;
         }
-    }
 
-    // 못 찾으면 NULL을 리턴한다.
-    return NULL;
+        /*
+        만약 끝까지 찾았는데도 안 나왔으면 처음부터 찾아본다.
+        이 구문이 없으면 바로 extend_heap을 하는데, 
+        이럼 앞에 있는 가용 블록들을 사용하지 못할 수 있어 메모리 낭비이다.
+        */
+        for (bp = heap_listp; bp < old_last_freep; bp = NEXT_BLKP(bp)){
+            if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+                return bp;
+        }
+
+        last_freep = bp;  // 다시 탐색을 마친 시점으로 last_freep를 돌린다.
+
+        return NULL;
+
+    /* first-fit */
+    #else
+        void* bp;
+
+        // 프롤로그 블록에서 에필로그 블록 전까지 블록 포인터 bp를 탐색한다.
+        // 블록이 가용 상태이고 사이즈가 요구 사이즈보다 크다면 해당 블록 포인터를 리턴
+        for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
+            if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){
+                return bp;
+            }
+        }
+
+        // 못 찾으면 NULL을 리턴한다.
+        return NULL;
+    #endif
 
 }
+
 
 /*
     place(bp, size)
@@ -305,32 +349,25 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
+    void *oldptr = ptr;  // 크기를 조절하고 싶은 힙의 시작 포인터
+    void *newptr;        // 크기 조절 뒤의 새 힙의 시작 포인터
+    size_t copySize;     // 복사할 힙의 크기
     
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
+
     // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
     copySize = GET_SIZE(HDRP(oldptr));
+
+    // 원래 메모리 크기보다 적은 크기를 realloc하면 
+    // 크기에 맞는 메모리만 할당되고 나머지는 안 된다. 
     if (size < copySize)
       copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
+
+    memcpy(newptr, oldptr, copySize);  // newptr에 oldptr를 시작으로 copySize만큼의 메모리 값을 복사한다.
+    mm_free(oldptr);  // 기존의 힙을 반환한다.
     return newptr;
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
