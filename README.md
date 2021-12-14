@@ -207,7 +207,9 @@ Uk를 다음과 같은 수식으로 만들 수 있다.
 
 **메모리 최고 이용도 = (최대한으로 많이 할당한 데이터 크기)/(힙 크기)**
 
-$$U_{k} = {max_{i<=k} P_{i}}/{H_{k}}$$
+<p align = center>
+    <img src="https://render.githubusercontent.com/render/math?math=U_{k} = {max_{i<=k} P_{i}}/{H_{k}}">
+</p>
 
 만약 해당 할당기의 **Uk가 1**이면, 다른 overhead 없이 순수하게 payload로만 이루어진 힙을 지닌다는 의미이다. 즉, 이루어질 수는 없겠지만, **할당기가 가질 수 있는 가장 이상적인 힙 이용도**가 되겠다. 
 
