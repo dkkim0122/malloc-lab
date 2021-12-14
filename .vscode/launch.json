@@ -8,7 +8,7 @@
             "name": "gcc-9 - Build and debug active file",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/mnt/c/Users/Kim Dokyung/swjungle/project/malloc-lab/malloc-lab/mdriver.c",
+            "program": "${workspaceFolder}/${fileBasename}",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
