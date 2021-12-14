@@ -228,7 +228,7 @@ $$U_{k} = {max_{i<=k} P_{i}}/{H_{k}}$$
     
     
 	<p align="center">
-		<img src = "\mnt\c\Users\Kim Dokyung\swjungle\project\malloc-lab\malloc-lab\image\Untitled(2).png" width="400" height="100"/>
+		<img src = ".\image\Untitled(2).png" width="400" height="100"/>
 	</p>
     
     원인으로는 정렬 제한사항을 만족하기 위해 패딩이 일어났을 경우 등이 있다.
