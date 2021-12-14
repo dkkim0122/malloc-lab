@@ -170,28 +170,6 @@ static void* coalesce(void* bp){
     return bp;
 }
 
-/*
-    extend_heap : 워드 단위 메모리를 인자로 받아 힙을 늘려준다.
-*/
-static void* extend_heap(size_t words){ // 워드 단위로 받는다.
-    char* bp;
-    size_t size;
-    
-    /* 더블 워드 정렬에 따라 메모리를 mem_sbrk 함수를 이용해 할당받는다. */
-    size = (words % 2) ? (words + 1) * WSIZE : (words) * WSIZE; // size를 짝수 word && byte 형태로 만든다.
-    if ((long)(bp = mem_sbrk(size)) == -1) // 새 메모리의 첫 부분을 bp로 둔다. 주소값은 int로는 못 받아서 long으로 casting한 듯.
-        return NULL;
-    
-    /* 새 가용 블록의 header와 footer를 정해주고 epilogue block을 가용 블록 맨 끝으로 옮긴다. */
-    PUT(HDRP(bp), PACK(size, 0));  // 헤더. 할당 안 해줬으므로 0으로.
-    PUT(FTRP(bp), PACK(size, 0));  // 풋터.
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));  // 새 에필로그 헤더
-
-    /* 만약 이전 블록이 가용 블록이라면 연결시킨다. */
-    return coalesce(bp);
-}
-
-
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
@@ -222,6 +200,28 @@ void *mm_malloc(size_t size)
     place(bp, asize);
     return bp;
 }
+
+/*
+    extend_heap : 워드 단위 메모리를 인자로 받아 힙을 늘려준다.
+*/
+static void* extend_heap(size_t words){ // 워드 단위로 받는다.
+    char* bp;
+    size_t size;
+    
+    /* 더블 워드 정렬에 따라 메모리를 mem_sbrk 함수를 이용해 할당받는다. */
+    size = (words % 2) ? (words + 1) * WSIZE : (words) * WSIZE; // size를 짝수 word && byte 형태로 만든다.
+    if ((long)(bp = mem_sbrk(size)) == -1) // 새 메모리의 첫 부분을 bp로 둔다. 주소값은 int로는 못 받아서 long으로 casting한 듯.
+        return NULL;
+    
+    /* 새 가용 블록의 header와 footer를 정해주고 epilogue block을 가용 블록 맨 끝으로 옮긴다. */
+    PUT(HDRP(bp), PACK(size, 0));  // 헤더. 할당 안 해줬으므로 0으로.
+    PUT(FTRP(bp), PACK(size, 0));  // 풋터.
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));  // 새 에필로그 헤더
+
+    /* 만약 이전 블록이 가용 블록이라면 연결시킨다. */
+    return coalesce(bp);
+}
+
 
 /*
     next_fit : 이전 검색이 종료된 지점부터 검색을 다시 시작한다.
