@@ -418,11 +418,9 @@ void free_block(ptr p)
 > 
 
 <p align="center">
-	<img src = ".\image\Untitled(8).png" width="500" height="150"/>
+	<img src = ".\image\Untitled(9).png" width="500" height="150"/>
 </p>
-<p align="center">
-	<em>반환되었음에도 인접한 반환 블록이 서로 구분되어져 있다. 이럼 5word를 할당을 못한다.</em>
-</p>
+
 
 <br>
 
