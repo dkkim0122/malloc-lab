@@ -1237,7 +1237,7 @@ void free_block(ptr p) {
     포인터 `free_listp`는 free list의 첫 주소를 가리키므로, `free_listp`가 가리키는 free list 안의 블록과 PRED, SUCC 링크를 진행한다.
     
     <p align="center">
-    <img src = ".\image\Untitled(17).png" width="650" height="450"/>
+    <img src = ".\image\캡처1.png" width="650" height="450"/>
     </p>
     <p align="center">
         <em>Free list에 새로운 가용 블록을 리스트의 맨 처음에 추가한다.</em>
