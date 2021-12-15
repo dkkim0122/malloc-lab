@@ -624,7 +624,7 @@ void free_block(ptr p) {
 
 - First Fit 할당 시, 전체 리스트 개수가 아닌 **가용 리스트의 개수에 비례**하도록 **할당 시간을 줄일 수** 있다.
 - 링크를 위해 **2 word의 추가적인 메모리가 더 필요**하다.
-- Segregated Free List 사용 시 블록들의 크기에 따라 Free List를 만들 수 있다. 이 때 Implicit List에서 활용되었던 것과 비슷하게 Linked List를 사용한다.
+- Segregated Free List 사용 시 블록들의 크기에 따라 Free List를 만들 수 있다. 이 때 Explicit List에서 활용되었던 것과 비슷하게 Linked List를 사용한다.
 
 <br>
 <br>
