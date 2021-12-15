@@ -1167,7 +1167,7 @@ void free_block(ptr p) {
     }
     ```
     <p align="center">
-    <img src = ".\image\Untitled(18).png" width="500" height="200"/>
+    <img src = ".\image\캡처.png" width="500" height="200"/>
     </p>
     <p align="center">
         <em>Explicit Allocator의 초기 힙은 6 words의 메모리를 가진다.</em>
