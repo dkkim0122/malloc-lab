@@ -245,8 +245,8 @@ static void* find_fit(size_t asize){
 
 
 /*
-    place(bp, size)
-    : 요구 메모리를 할당할 수 있는 가용 블록을 할당한다. 이 때 분할이 가능하면 분할한다.
+    place(bp, size) : 할당할 수 있는 free 블록을 free list에서 없애준다. 
+    할당 후 만약 분할이 되었다면, 새 가용 리스트를 free list에 넣어준다.
 */
 static void place(void* bp, size_t asize){
     // 현재 할당할 수 있는 후보 가용 블록의 주소
