@@ -504,7 +504,7 @@ void free_block(ptr p) {
 <br>
 <br>
 
-**명시적 가용 리스트 Implicit Free List**
+**명시적 가용 리스트 Explicit Free List**
 ===
 
 > **가용 블록들끼리 포인터로 연결**한다. 다음 가용 블록의 위치를 명시적으로 알 수 있다.
