@@ -68,6 +68,7 @@ void *mm_realloc(void *ptr, size_t size);
     컴퓨터 환경에 치명적 영향을 끼칠 수 있는 명령을 **특권 명령**이라고 하는데, 특권 명령은 오로지 커널 모드에서만 실행된다. 따라서 유저 모드에서는 상대적으로 안전하게 작업할 수 있는 것이다. 이를 **Dual-Mode Operation**이라 한다.
     
 <br>
+
 만약 응용 프로그램이 하드웨어 등 시스템 자원을 활용하고 싶다면, **무조건 시스템 콜을 OS에 보내 커널의 서비스를 이용해야 한다.**
 
 만약 시스템 콜이 호출되면 프로그램은 유저 모드에서 커널 모드로 전환(Context Switching)**되고, 명령 수행이 끝나면 다시 유저 모드로 복귀**(Context Switching)한다.
@@ -118,13 +119,14 @@ void *mm_realloc(void *ptr, size_t size);
 **malloc 패키지와 skbr, mmap**
 ---
 
-- **void* malloc(size_t size)**
+- __void* malloc(size_t size)__
     
     > 성공 시, **적어도** size만큼의 메모리 블록들을 **초기화하지 않고** 리턴한다.
     > 
     - x86(32비트 모드)은 **8 byte(2 word)**, x86-64 컴퓨터는 16 byte(4 word)의 **정렬된 블록들을 기본 단위로 리턴한다.**
     - **mmap이나 munmap 또는 sbrk 함수를 이용해 명시적으로 힙 메모리를 할당하거나 반환한다.**
-- **void free(void* p)**
+
+- __void free(void* p)__
     
     > 할당된 블록의 시작을 가리키는 주소를 인자로 받아 반환한다.
     > 
