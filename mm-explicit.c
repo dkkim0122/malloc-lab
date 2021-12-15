@@ -127,6 +127,60 @@ int mm_init(void)
     return 0;
 }
 
+
+/*
+    extend_heap : 워드 단위 메모리를 인자로 받아 힙을 늘려준다.
+*/
+static void* extend_heap(size_t words){ // 워드 단위로 받는다.
+    char* bp;
+    size_t size;
+    
+    /* 더블 워드 정렬에 따라 메모리를 mem_sbrk 함수를 이용해 할당받는다. */
+    size = (words % 2) ? (words + 1) * WSIZE : (words) * WSIZE; // size를 짝수 word && byte 형태로 만든다.
+    if ((long)(bp = mem_sbrk(size)) == -1) // 새 메모리의 첫 부분을 bp로 둔다. 주소값은 int로는 못 받아서 long으로 casting한 듯.
+        return NULL;
+    
+    /* 새 가용 블록의 header와 footer를 정해주고 epilogue block을 가용 블록 맨 끝으로 옮긴다. */
+    PUT(HDRP(bp), PACK(size, 0));  // 헤더. 할당 안 해줬으므로 0으로.
+    PUT(FTRP(bp), PACK(size, 0));  // 풋터.
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));  // 새 에필로그 헤더
+
+    /* 만약 이전 블록이 가용 블록이라면 연결시킨다. */
+    return coalesce(bp);
+}
+
+/* 
+ * mm_malloc - Allocate a block by incrementing the brk pointer.
+ *     Always allocate a block whose size is a multiple of the alignment.
+ */
+void *mm_malloc(size_t size)
+{
+    size_t asize;       // Adjusted block size
+    size_t extendsize;  // Amount for extend heap if there is no fit
+    char* bp;
+
+    // 가짜 요청 spurious request 무시
+    if (size == 0)
+        return NULL;
+
+    // 요청 사이즈에 header와 footer를 위한 dword 공간(SIZE_T_SIZE)을 추가한 후 align해준다.
+    asize = ALIGN(size + SIZE_T_SIZE);  
+
+    // 할당할 가용 리스트를 찾아 필요하다면 분할해서 할당한다!
+    if ((bp = find_fit(asize)) != NULL){  // first fit으로 추적한다.
+        place(bp, asize);  // 필요하다면 분할하여 할당한다.
+        return bp;
+    }
+
+    // 만약 맞는 크기의 가용 블록이 없다면 새로 힙을 늘려서 새 힙에 메모리를 할당한다.
+    extendsize = MAX(asize, CHUNKSIZE);  // 둘 중 더 큰 값으로 사이즈를 정한다.
+    if ((bp = extend_heap(extendsize / WSIZE)) == NULL) 
+        return NULL;
+    place(bp, asize);
+    return bp;
+}
+
+
 /*
     coalesce(bp) : 해당 가용 블록을 앞뒤 가용 블록과 연결하고 연결된 가용 블록의 주소를 리턴한다.
 */
@@ -169,58 +223,6 @@ static void* coalesce(void* bp){
     putFreeBlock(bp);
 
     return bp;
-}
-
-/* 
- * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
- */
-void *mm_malloc(size_t size)
-{
-    size_t asize;       // Adjusted block size
-    size_t extendsize;  // Amount for extend heap if there is no fit
-    char* bp;
-
-    // 가짜 요청 spurious request 무시
-    if (size == 0)
-        return NULL;
-
-    // 요청 사이즈에 header와 footer를 위한 dword 공간(SIZE_T_SIZE)을 추가한 후 align해준다.
-    asize = ALIGN(size + SIZE_T_SIZE);  
-
-    // 할당할 가용 리스트를 찾아 필요하다면 분할해서 할당한다!
-    if ((bp = find_fit(asize)) != NULL){  // first fit으로 추적한다.
-        place(bp, asize);  // 필요하다면 분할하여 할당한다.
-        return bp;
-    }
-
-    // 만약 맞는 크기의 가용 블록이 없다면 새로 힙을 늘려서 새 힙에 메모리를 할당한다.
-    extendsize = MAX(asize, CHUNKSIZE);  // 둘 중 더 큰 값으로 사이즈를 정한다.
-    if ((bp = extend_heap(extendsize / WSIZE)) == NULL) 
-        return NULL;
-    place(bp, asize);
-    return bp;
-}
-
-/*
-    extend_heap : 워드 단위 메모리를 인자로 받아 힙을 늘려준다.
-*/
-static void* extend_heap(size_t words){ // 워드 단위로 받는다.
-    char* bp;
-    size_t size;
-    
-    /* 더블 워드 정렬에 따라 메모리를 mem_sbrk 함수를 이용해 할당받는다. */
-    size = (words % 2) ? (words + 1) * WSIZE : (words) * WSIZE; // size를 짝수 word && byte 형태로 만든다.
-    if ((long)(bp = mem_sbrk(size)) == -1) // 새 메모리의 첫 부분을 bp로 둔다. 주소값은 int로는 못 받아서 long으로 casting한 듯.
-        return NULL;
-    
-    /* 새 가용 블록의 header와 footer를 정해주고 epilogue block을 가용 블록 맨 끝으로 옮긴다. */
-    PUT(HDRP(bp), PACK(size, 0));  // 헤더. 할당 안 해줬으므로 0으로.
-    PUT(FTRP(bp), PACK(size, 0));  // 풋터.
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));  // 새 에필로그 헤더
-
-    /* 만약 이전 블록이 가용 블록이라면 연결시킨다. */
-    return coalesce(bp);
 }
 
 
