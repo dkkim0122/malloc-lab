@@ -627,6 +627,47 @@ void free_block(ptr p) {
 - Segregated Free List 사용 시 블록들의 크기에 따라 Free List를 만들 수 있다. 이 때 Explicit List에서 활용되었던 것과 비슷하게 Linked List를 사용한다.
 
 <br>
+
+**분리 가용 리스트 Segregated Free List**
+===
+
+> 모든 Free 블록들을 크기별로 나누어 **(size class)** 여러 개의 Free list에 저장한다.
+> 
+- 대부분 2의 제곱수를 기준으로 각각의 size class에 대한 Free list들을 구분한다.
+- Allocation 시 요청 크기에 맞는 Free list에서 가용 블록을 찾으므로 탐색 시간이 훨씬 줄어든다
+
+<p align="center">
+	<img src = "https://user-images.githubusercontent.com/93521799/146284874-9a69f4f2-4f74-4b2c-bf52-68f93b689979.png" width="400" height="250"/>
+</p>
+<p align='center'>
+    <em>각각의 size class에 대한 가용 블록들의 모음, 즉 free list들이 존재한다.</em>
+</p>
+
+
+### 개요
+
+- **간단한 분리 저장장치 Simple Segregated Storage**
+    
+    > 각 size class에 대한 free list 안의 **free 블록들이 동일한 크기**를 갖는다.
+    > 
+    - Free 블록들의 크기는 size class의 가장 큰 사이즈로 한다.
+    - 각 free 블록들은 할당되어도 **절대로 분할되지 않는다.**
+    - 블록의 **할당과 반환이 상수 시간**에 이루어지지만 당연히 **내부, 외부 단편화에 취약**하다.
+- **분리 맞춤 Segregated Fit**
+    
+    > 각 size class에 대한 free list들 안에 **서로 다른 크기의 free 블록들의 배열**들을 저장한다.
+    > 
+    - 각 Free list 안의 가용 블록들은 서로 다른 크기를 갖지만, 해당 size class의 크기 범위보다 **작거나 크면 안 된다.**
+    
+    **블록 할당 시**
+    
+    - 요청한 사이즈에 해당되는 size class를 정한다.
+    - 해당 Free list를 **First-fit 방식으로 검색**해 적당한 크기의 블록을 찾는다.
+    - 블록을 찾으면 블록을 분할하고, **분할한 새 가용 블록을 적당한 Free list에** 넣는다.
+    - 블록을 찾지 못했다면 다음 size class의 Free list를 검색한다.
+
+
+<br>
 <br>
 
 **malloc 구현**
