@@ -496,7 +496,7 @@ void free_block(ptr p) {
 > **오로지 가용 블록일 때만 footer를 사용한다.** 만약 할당 블록일 경우에는 Coalescing을 할 필요가 없으므로 footer가 필요가 없거든.
 > 
 
-근데 내 이전 블록이 가용 블록이라 footer가 없으면, 어떻게 이 블록이 가용 블록인지 아닌지를 알 수 있을까?
+근데 내 이전 블록이 할당 블록이라 footer가 없으면, 어떻게 이 블록이 가용 블록인지 아닌지를 알 수 있을까?
 
 > 헤더에서 해당 블록의 할당 여부를 저장하는 자릿수 그 다음 자리에 이전 블록의 할당 여부를 저장한다.
 >
@@ -1237,7 +1237,7 @@ void free_block(ptr p) {
     포인터 `free_listp`는 free list의 첫 주소를 가리키므로, `free_listp`가 가리키는 free list 안의 블록과 PRED, SUCC 링크를 진행한다.
     
     <p align="center">
-    <img src = "https://user-images.githubusercontent.com/93521799/146135419-51b8f56d-b58f-4986-a8c2-32ca567c70ee.PNG" width="650" height="450"/>
+    <img src = "https://user-images.githubusercontent.com/93521799/146284629-a9e5e454-bd56-457b-9cbd-4259a87b6bd4.PNG" width="650" height="450"/>
     </p>
     <p align="center">
         <em>Free list에 새로운 가용 블록을 리스트의 맨 처음에 추가한다.</em>
